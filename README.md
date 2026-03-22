@@ -1,5 +1,5 @@
 # Copi
-Your copying copilot. *Understands* your clipboard.
+Your copying copilot. *Understands* your clipboard. All local.
 
 ## Why Copi
 Your clipboard manager will just show you history, and let you search it. 
