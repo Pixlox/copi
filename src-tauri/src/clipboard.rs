@@ -4,7 +4,10 @@ use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 
-use crate::AppState;
+use crate::{
+    macos::{get_app_icon_png, get_frontmost_app_info, FrontmostApp},
+    AppState,
+};
 
 pub async fn watch_clipboard(app: &tauri::AppHandle) {
     let mut clipboard = match Clipboard::new() {
@@ -17,60 +20,85 @@ pub async fn watch_clipboard(app: &tauri::AppHandle) {
 
     let mut last_text_hash = String::new();
     let mut last_image_hash = String::new();
+    let mut last_non_copi_app: Option<FrontmostApp> = None;
 
     loop {
         // Check if paused
         let paused = {
             let state = app.state::<AppState>();
-            let running = state.clipboard_watcher_running.lock().unwrap();
-            !*running
+            let running = *state.clipboard_watcher_running.lock().unwrap();
+            !running
         };
         if paused {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             continue;
         }
 
+        let current_frontmost = get_frontmost_app_info();
+        if let Some(frontmost) = current_frontmost.clone() {
+            if !frontmost.is_copi() && !frontmost.is_empty() {
+                last_non_copi_app = Some(frontmost);
+            }
+        }
+        let source_app = current_frontmost
+            .filter(|app| !app.is_copi() && !app.is_empty())
+            .or_else(|| last_non_copi_app.clone())
+            .unwrap_or_default();
+
         // ── Text clipboard ────────────────────────────────────────
         if let Ok(text) = clipboard.get_text() {
             let hash = compute_hash(&text);
             if hash != last_text_hash && !text.trim().is_empty() {
                 last_text_hash = hash.clone();
-                last_image_hash.clear(); // text takes priority, clear image hash
+                last_image_hash.clear();
 
                 if !crate::privacy::should_capture(&text, app) {
                     continue;
                 }
 
                 let content_type = detect_content_type(&text, None);
-                let source_app = get_source_app();
                 let highlighted = if content_type == "code" {
                     Some(highlight_code(&text))
                 } else {
                     None
                 };
 
-                insert_clip(app, &text, &hash, &content_type, &source_app, highlighted.as_deref());
+                insert_clip(
+                    app,
+                    &text,
+                    &hash,
+                    &content_type,
+                    &source_app,
+                    highlighted.as_deref(),
+                );
             }
         }
 
         // ── Image clipboard ───────────────────────────────────────
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if let Ok(image_data) = clipboard.get_image() {
-                // Hash the raw pixels
-                let hash = compute_hash_bytes(image_data.bytes.as_ref());
-                if hash != last_image_hash && hash != last_text_hash {
+        let img_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            match clipboard.get_image() {
+                Ok(image_data) => {
+                    let pixels = image_data.bytes.as_ref();
+                    if pixels.is_empty() {
+                        return;
+                    }
+                    let hash = compute_hash_bytes(pixels);
+                    if hash == last_text_hash {
+                        return;
+                    }
+                    if hash == last_image_hash {
+                        return;
+                    }
                     last_image_hash = hash.clone();
 
-                    // Create thumbnail for display
                     let thumbnail = image_to_thumbnail(&image_data);
-                    let source_app = get_source_app();
 
                     // Run OCR on the image
                     let ocr_text = {
                         let state = app.state::<AppState>();
                         if let Some(ref ocr) = state.ocr_engine {
                             match ocr.recognize_text(
-                                image_data.bytes.as_ref(),
+                                pixels,
                                 image_data.width as u32,
                                 image_data.height as u32,
                             ) {
@@ -78,14 +106,20 @@ pub async fn watch_clipboard(app: &tauri::AppHandle) {
                                     eprintln!("[OCR] Recognized {} chars", text.len());
                                     Some(text)
                                 }
-                                _ => None,
+                                Ok(_) => {
+                                    eprintln!("[OCR] No text found in image");
+                                    None
+                                }
+                                Err(e) => {
+                                    eprintln!("[OCR] Failed: {}", e);
+                                    None
+                                }
                             }
                         } else {
                             None
                         }
                     };
 
-                    // Store both thumbnail and original raw data
                     insert_image_clip(
                         app,
                         &image_data,
@@ -95,15 +129,25 @@ pub async fn watch_clipboard(app: &tauri::AppHandle) {
                         ocr_text.as_deref(),
                     );
                 }
+                Err(_) => {} // No image on clipboard — normal
             }
         }));
+
+        if let Err(e) = img_result {
+            let msg = e
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "unknown panic".into());
+            eprintln!("[Image] Processing failed: {}", msg);
+        }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 }
 
 #[tauri::command]
-pub fn copy_to_clipboard(app: tauri::AppHandle, clip_id: i64) -> Result<(), String> {
+pub async fn copy_to_clipboard(app: tauri::AppHandle, clip_id: i64) -> Result<(), String> {
     let state = app.state::<AppState>();
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
@@ -118,7 +162,6 @@ pub fn copy_to_clipboard(app: tauri::AppHandle, clip_id: i64) -> Result<(), Stri
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
 
     if content_type == "image" {
-        // Retrieve stored image data
         let (raw_bytes, width, height): (Vec<u8>, i64, i64) = conn
             .query_row(
                 "SELECT image_data, image_width, image_height FROM clips WHERE id = ?",
@@ -140,7 +183,7 @@ pub fn copy_to_clipboard(app: tauri::AppHandle, clip_id: i64) -> Result<(), Stri
         };
         clipboard
             .set_image(image)
-            .map_err(|e| format!("Failed to set image on clipboard: {}", e))?;
+            .map_err(|e| format!("Failed to set image: {}", e))?;
     } else {
         let content: String = conn
             .query_row("SELECT content FROM clips WHERE id = ?", [clip_id], |row| {
@@ -150,9 +193,7 @@ pub fn copy_to_clipboard(app: tauri::AppHandle, clip_id: i64) -> Result<(), Stri
 
         drop(conn);
 
-        clipboard
-            .set_text(&content)
-            .map_err(|e| e.to_string())?;
+        clipboard.set_text(&content).map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -172,29 +213,18 @@ fn compute_hash_bytes(data: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn detect_content_type(content: &str, source_app: Option<&str>) -> String {
+fn detect_content_type(content: &str, _source_app: Option<&str>) -> String {
     let trimmed = content.trim();
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         return "url".to_string();
     }
-
     let has_newlines = content.contains('\n');
     let code_indicators = [
-        "{", "}", "=>", "function", "def ", "import ", "class ", "//", "/*", "#!",
-        "fn ", "pub ", "impl ", "struct ", "enum ", "const ", "let ", "mut ",
+        "{", "}", "=>", "function", "def ", "import ", "class ", "//", "/*", "#!", "fn ", "pub ",
+        "impl ", "struct ", "enum ", "const ", "let ", "mut ",
     ];
     let has_code = code_indicators.iter().any(|&i| content.contains(i));
-
-    let code_apps = [
-        "com.microsoft.VSCode", "com.jetbrains", "com.apple.Xcode",
-        "org.vim", "org.gnu.Emacs", "com.github.wez", "com.apple.Terminal",
-        "com.sublimetext",
-    ];
-    let is_code_app = source_app
-        .map(|app| code_apps.iter().any(|&ca| app.contains(ca)))
-        .unwrap_or(false);
-
-    if has_newlines && (has_code || is_code_app) {
+    if has_newlines && has_code {
         return "code".to_string();
     }
     "text".to_string()
@@ -208,14 +238,17 @@ fn highlight_code(code: &str) -> String {
 
     let ps = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
-    let syntax = ps.find_syntax_by_extension("txt").unwrap_or_else(|| ps.find_syntax_plain_text());
+    let syntax = ps
+        .find_syntax_by_extension("txt")
+        .unwrap_or_else(|| ps.find_syntax_plain_text());
     let theme = &ts.themes["base16-ocean.dark"];
     let mut h = HighlightLines::new(syntax, theme);
     let mut html = String::from("<pre style=\"margin:0\">");
-
     for line in code.lines() {
         if let Ok(regions) = h.highlight_line(line, &ps) {
-            if let Ok(frag) = styled_line_to_highlighted_html(&regions, syntect::html::IncludeBackground::No) {
+            if let Ok(frag) =
+                styled_line_to_highlighted_html(&regions, syntect::html::IncludeBackground::No)
+            {
                 html.push_str(&frag);
             }
         }
@@ -225,21 +258,14 @@ fn highlight_code(code: &str) -> String {
     html
 }
 
-fn get_source_app() -> String {
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        if let Ok(output) = Command::new("osascript")
-            .arg("-e")
-            .arg("name of application (path to frontmost application as text)")
-            .output()
-        {
-            if let Ok(name) = String::from_utf8(output.stdout) {
-                return name.trim().to_string();
-            }
-        }
+/// Fetch the app icon via AppKit and the on-disk cache.
+fn fetch_app_icon(state: &tauri::State<'_, AppState>, source_app: &FrontmostApp) -> Vec<u8> {
+    if source_app.name.is_empty() || source_app.is_copi() {
+        return Vec::new();
     }
-    String::new()
+
+    let _ = state;
+    get_app_icon_png(source_app).unwrap_or_default()
 }
 
 fn insert_clip(
@@ -247,28 +273,57 @@ fn insert_clip(
     content: &str,
     hash: &str,
     content_type: &str,
-    source_app: &str,
+    source_app: &FrontmostApp,
     highlighted: Option<&str>,
 ) {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().unwrap();
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
     let capped = if content.len() > 100_000 {
-        &content[..content.char_indices().map(|(i, _)| i).take_while(|&i| i <= 100_000).last().unwrap_or(0)]
+        &content[..content
+            .char_indices()
+            .map(|(i, _)| i)
+            .take_while(|&i| i <= 100_000)
+            .last()
+            .unwrap_or(0)]
     } else {
         content
     };
 
+    let icon = fetch_app_icon(&state, source_app);
+    let conn = state.db.lock().unwrap();
+
     let result = conn.execute(
-        "INSERT OR IGNORE INTO clips (content, content_hash, content_type, source_app, content_highlighted, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![capped, hash, content_type, source_app, highlighted, now],
+        "INSERT INTO clips (content, content_hash, content_type, source_app, source_app_icon, content_highlighted, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(content_hash) DO UPDATE SET
+            source_app = CASE
+                WHEN excluded.source_app <> '' THEN excluded.source_app
+                ELSE clips.source_app
+            END,
+            source_app_icon = CASE
+                WHEN length(excluded.source_app_icon) > 0 THEN excluded.source_app_icon
+                ELSE clips.source_app_icon
+            END,
+            content_highlighted = COALESCE(excluded.content_highlighted, clips.content_highlighted),
+            created_at = excluded.created_at",
+        rusqlite::params![capped, hash, content_type, source_app.name, icon, highlighted, now],
     );
 
-    if let Ok(1) = result {
-        let clip_id = conn.last_insert_rowid();
+    if result.is_ok() {
+        let clip_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM clips WHERE content_hash = ?",
+                [hash],
+                |row| row.get(0),
+            )
+            .ok();
         drop(conn);
-        let _ = state.clip_tx.try_send(clip_id);
+        if let Some(clip_id) = clip_id {
+            let _ = state.clip_tx.try_send(clip_id);
+        }
         let _ = app.emit("new-clip", ());
     }
 }
@@ -278,30 +333,63 @@ fn insert_image_clip(
     image_data: &ImageData,
     thumbnail: Option<&[u8]>,
     hash: &str,
-    source_app: &str,
+    source_app: &FrontmostApp,
     ocr_text: Option<&str>,
 ) {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().unwrap();
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
 
     let raw_bytes = image_data.bytes.as_ref();
     let width = image_data.width as i64;
     let height = image_data.height as i64;
     let thumb = thumbnail.unwrap_or(&[]);
 
+    let icon = fetch_app_icon(&state, source_app);
+
+    let conn = state.db.lock().unwrap();
     let result = conn.execute(
-        "INSERT OR IGNORE INTO clips (content, content_hash, content_type, source_app, source_app_icon, ocr_text, image_data, image_width, image_height, created_at)
-         VALUES ('[Image]', ?1, 'image', ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        rusqlite::params![hash, source_app, thumb, ocr_text, raw_bytes, width, height, now],
+        "INSERT INTO clips (content, content_hash, content_type, source_app, source_app_icon, ocr_text, image_data, image_thumbnail, image_width, image_height, created_at)
+         VALUES ('[Image]', ?1, 'image', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(content_hash) DO UPDATE SET
+            source_app = CASE
+                WHEN excluded.source_app <> '' THEN excluded.source_app
+                ELSE clips.source_app
+            END,
+            source_app_icon = CASE
+                WHEN length(excluded.source_app_icon) > 0 THEN excluded.source_app_icon
+                ELSE clips.source_app_icon
+            END,
+            ocr_text = COALESCE(excluded.ocr_text, clips.ocr_text),
+            image_data = COALESCE(excluded.image_data, clips.image_data),
+            image_thumbnail = CASE
+                WHEN length(excluded.image_thumbnail) > 0 THEN excluded.image_thumbnail
+                ELSE clips.image_thumbnail
+            END,
+            image_width = CASE
+                WHEN excluded.image_width > 0 THEN excluded.image_width
+                ELSE clips.image_width
+            END,
+            image_height = CASE
+                WHEN excluded.image_height > 0 THEN excluded.image_height
+                ELSE clips.image_height
+            END,
+            created_at = excluded.created_at",
+        rusqlite::params![hash, source_app.name, icon, ocr_text, raw_bytes, thumb, width, height, now],
     );
 
-    if let Ok(1) = result {
-        let clip_id = conn.last_insert_rowid();
+    if result.is_ok() {
+        let clip_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM clips WHERE content_hash = ?",
+                [hash],
+                |row| row.get(0),
+            )
+            .ok();
         drop(conn);
-
-        // If OCR text exists, queue for embedding
-        if ocr_text.is_some() {
+        if let (Some(clip_id), true) = (clip_id, ocr_text.is_some()) {
             let _ = state.clip_tx.try_send(clip_id);
         }
         let _ = app.emit("new-clip", ());
@@ -345,5 +433,9 @@ fn image_to_thumbnail(image_data: &ImageData) -> Option<Vec<u8>> {
         }
     }
 
-    if png_data.is_empty() { None } else { Some(png_data) }
+    if png_data.is_empty() {
+        None
+    } else {
+        Some(png_data)
+    }
 }

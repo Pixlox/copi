@@ -89,9 +89,8 @@ pub fn embed_text(model: &EmbeddingModel, text: &str) -> Result<Vec<f32>, String
 
     let input_ids_tensor = Tensor::from_array((vec![1i64, seq_len], input_ids.to_vec()))
         .map_err(|e| format!("Tensor failed: {}", e))?;
-    let attention_mask_tensor =
-        Tensor::from_array((vec![1i64, seq_len], attention_mask.to_vec()))
-            .map_err(|e| format!("Tensor failed: {}", e))?;
+    let attention_mask_tensor = Tensor::from_array((vec![1i64, seq_len], attention_mask.to_vec()))
+        .map_err(|e| format!("Tensor failed: {}", e))?;
 
     let mut session = model.session.lock().map_err(|e| e.to_string())?;
     let outputs = session
@@ -126,7 +125,7 @@ pub fn embed_query(model: &EmbeddingModel, query: &str) -> Result<Vec<f32>, Stri
 /// Backfill: embed all clips that don't have embeddings yet
 pub fn backfill_embeddings(app: &tauri::AppHandle, clip_tx: &tokio::sync::mpsc::Sender<i64>) {
     let state = app.state::<crate::AppState>();
-    let conn = match state.db.lock() {
+    let conn = match state.db.try_lock() {
         Ok(c) => c,
         Err(_) => return,
     };
@@ -135,7 +134,9 @@ pub fn backfill_embeddings(app: &tauri::AppHandle, clip_tx: &tokio::sync::mpsc::
         .prepare(
             "SELECT c.id FROM clips c
              LEFT JOIN clip_embeddings e ON c.id = e.rowid
-             WHERE e.rowid IS NULL AND c.content_type != 'image' AND c.content != ''
+             WHERE e.rowid IS NULL
+               AND (c.content_type != 'image' OR c.ocr_text IS NOT NULL)
+               AND (c.content != '' OR c.ocr_text IS NOT NULL)
              ORDER BY c.created_at DESC
              LIMIT 500",
         )
@@ -175,6 +176,7 @@ pub async fn embedding_worker(
     };
 
     while let Some(clip_id) = rx.recv().await {
+        // Fetch content — for images, use OCR text instead of "[Image]"
         let content: Option<String> = {
             let state = app.state::<crate::AppState>();
             let conn = match state.db.lock() {
@@ -182,15 +184,26 @@ pub async fn embedding_worker(
                 Err(_) => continue,
             };
             conn.query_row(
-                "SELECT content FROM clips WHERE id = ?",
+                "SELECT content, ocr_text FROM clips WHERE id = ?",
                 [clip_id],
-                |row| row.get(0),
+                |row| {
+                    let content: String = row.get(0).unwrap_or_default();
+                    let ocr_text: Option<String> = row.get(1).unwrap_or(None);
+                    // For images, prefer OCR text. For non-images, use content directly.
+                    if content == "[Image]" {
+                        Ok(ocr_text)
+                    } else if content.is_empty() {
+                        Ok(ocr_text)
+                    } else {
+                        Ok(Some(content))
+                    }
+                },
             )
-            .ok()
+            .unwrap_or(None)
         };
 
         let content = match content {
-            Some(c) if !c.is_empty() && c != "[Image]" => c,
+            Some(c) if !c.is_empty() => c,
             _ => continue,
         };
 
@@ -201,19 +214,19 @@ pub async fn embedding_worker(
                     continue;
                 }
 
-                let vec_bytes: Vec<u8> =
-                    embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
+                let vec_bytes: Vec<u8> = embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
 
                 {
                     let state = app.state::<crate::AppState>();
-                    let lock_result = state.db.lock();
-                    if let Ok(ref conn) = lock_result {
-                        if let Err(e) = conn.execute(
-                            "INSERT OR REPLACE INTO clip_embeddings(rowid, embedding) VALUES (?1, ?2)",
-                            rusqlite::params![clip_id, vec_bytes],
-                        ) {
-                            eprintln!("[Embed] Store failed clip {}: {}", clip_id, e);
-                        }
+                    let conn = match state.db.try_lock() {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    if let Err(e) = conn.execute(
+                        "INSERT OR REPLACE INTO clip_embeddings(rowid, embedding) VALUES (?1, ?2)",
+                        rusqlite::params![clip_id, vec_bytes],
+                    ) {
+                        eprintln!("[Embed] Store failed clip {}: {}", clip_id, e);
                     }
                 }
             }

@@ -24,14 +24,17 @@
         "resizable": false,
         "skipTaskbar": true,
         "center": true,
-        "acceptFirstMouse": true
+        "acceptFirstMouse": true,
+        "visibleOnAllWorkspaces": true
       },
       {
         "label": "settings",
         "title": "Copi Settings",
-        "width": 600,
-        "height": 450,
-        "resizable": false,
+        "width": 620,
+        "height": 640,
+        "minWidth": 480,
+        "minHeight": 400,
+        "resizable": true,
         "visible": false,
         "center": true
       }
@@ -43,6 +46,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -53,5 +57,13 @@
     "resources": [
       "resources/models/*"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "GENERATE_KEY_AND_PASTE_HERE",
+      "endpoints": [
+        "https://github.com/YOUR_ORG/YOUR_REPO/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

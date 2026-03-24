@@ -1,139 +1,373 @@
-/// OCR trait — designed for cross-platform extensibility.
-/// macOS: Apple Vision (VNRecognizeTextRequest)
-/// Windows: Tesseract or RapidOCR (future)
-
 pub trait OcrEngine: Send + Sync {
     fn recognize_text(&self, image_data: &[u8], width: u32, height: u32) -> Result<String, String>;
 }
 
-/// Initialize the OCR engine for the current platform.
 pub fn init_ocr_engine() -> Result<Box<dyn OcrEngine>, String> {
     #[cfg(target_os = "macos")]
     {
         eprintln!("[OCR] Initializing Apple Vision engine");
-        Ok(Box::new(AppleVisionOcr::new()?))
+        let supported_languages = load_supported_languages();
+        let passes = build_ocr_passes(supported_languages.as_ref());
+
+        if passes.is_empty() {
+            return Err("Apple Vision returned no supported OCR languages".into());
+        }
+
+        if let Some(supported) = supported_languages {
+            eprintln!(
+                "[OCR] Vision supports {} languages; configured {} OCR passes",
+                supported.len(),
+                passes.len()
+            );
+        }
+
+        Ok(Box::new(AppleVisionOcr { passes }))
     }
 
     #[cfg(not(target_os = "macos"))]
     {
-        eprintln!("[OCR] No OCR engine available for this platform");
         Err("OCR not available on this platform".to_string())
     }
 }
 
-// ─── Apple Vision Implementation (macOS) ───────────────────────────
+#[cfg(target_os = "macos")]
+use std::collections::HashSet;
 
 #[cfg(target_os = "macos")]
-struct AppleVisionOcr;
+use std::{ffi::c_void, ptr::null_mut};
 
 #[cfg(target_os = "macos")]
-impl AppleVisionOcr {
-    fn new() -> Result<Self, String> {
-        Ok(AppleVisionOcr)
-    }
+use cidre::{
+    cv::{PixelBuf, PixelFormat},
+    ns,
+    vn::{self, ImageRequestHandler},
+};
+
+#[cfg(target_os = "macos")]
+struct AppleVisionOcr {
+    passes: Vec<OcrPass>,
 }
 
 #[cfg(target_os = "macos")]
 impl OcrEngine for AppleVisionOcr {
     fn recognize_text(&self, image_data: &[u8], width: u32, height: u32) -> Result<String, String> {
-        use objc::runtime::{Class, Object};
-        use objc::{msg_send, sel, sel_impl};
+        let grayscale = rgba_to_grayscale(image_data, width, height)?;
+        run_vision_ocr(&grayscale, width as usize, height as usize, &self.passes)
+    }
+}
 
-        unsafe {
-            // Create CGImage from raw RGBA pixel data
-            let data_len = image_data.len();
-            let color_space: *mut Object = msg_send![Class::get("CGColorSpace").unwrap(), colorSpaceWithName: {
-                let name: *mut Object = msg_send![Class::get("NSString").unwrap(), stringWithUTF8String: b"kCGColorSpaceSRGB\0".as_ptr()];
-                name
-            }];
+#[cfg(target_os = "macos")]
+#[derive(Clone, Debug)]
+struct OcrPass {
+    name: &'static str,
+    languages: Vec<String>,
+    use_language_correction: bool,
+}
 
-            let provider: *mut Object = msg_send![
-                Class::get("CGDataProvider").unwrap(),
-                createWithData: std::ptr::null::<u8>()
-                    data: image_data.as_ptr()
-                    size: data_len
-            ];
+#[cfg(target_os = "macos")]
+#[derive(Clone, Debug)]
+struct OcrPassResult {
+    text: String,
+    avg_confidence: f32,
+    char_count: usize,
+    meaningful_char_count: usize,
+}
 
-            // CGImageCreate
-            let cg_image: *mut Object = msg_send![
-                Class::get("CGImage").unwrap(),
-                createWithWidth: width as usize
-                height: height as usize
-                bitsPerComponent: 8
-                bitsPerPixel: 32
-                bytesPerRow: (width as usize * 4)
-                space: color_space
-                bitmapInfo: 1u32 // kCGImageAlphaLast
-                provider: provider
-                decode: std::ptr::null::<u8>()
-                shouldInterpolate: false
-                intent: 0i64
-            ];
+#[cfg(target_os = "macos")]
+const DESIRED_LANGUAGE_GROUPS: &[(&str, &[&str], bool)] = &[
+    ("arabic", &["ar-SA", "ar"], false),
+    ("chinese_simplified", &["zh-Hans", "zh-CN", "zh"], false),
+    ("chinese_traditional", &["zh-Hant", "zh-TW"], false),
+    ("danish", &["da-DK", "da"], true),
+    ("dutch", &["nl-NL", "nl"], true),
+    ("english", &["en-US", "en-GB", "en"], true),
+    ("french", &["fr-FR", "fr"], true),
+    ("german", &["de-DE", "de"], true),
+    ("italian", &["it-IT", "it"], true),
+    ("japanese", &["ja-JP", "ja"], false),
+    ("korean", &["ko-KR", "ko"], false),
+    (
+        "norwegian",
+        &["nb-NO", "nn-NO", "no-NO", "nb", "nn", "no"],
+        true,
+    ),
+    ("portuguese_brazil", &["pt-BR", "pt"], true),
+    ("portuguese_portugal", &["pt-PT", "pt"], true),
+    ("russian", &["ru-RU", "ru"], false),
+    ("spanish", &["es-ES", "es-MX", "es"], true),
+    ("swedish", &["sv-SE", "sv"], true),
+    ("thai", &["th-TH", "th"], false),
+    ("turkish", &["tr-TR", "tr"], true),
+    ("ukrainian", &["uk-UA", "uk"], false),
+    ("vietnamese", &["vi-VN", "vi"], false),
+];
 
-            if cg_image.is_null() {
-                return Err("Failed to create CGImage".to_string());
-            }
+#[cfg(target_os = "macos")]
+#[no_mangle]
+extern "C" fn release_callback(_refcon: *mut c_void, _data_ptr: *const *const c_void) {}
 
-            // Create VNImageRequestHandler
-            let handler_class = Class::get("VNImageRequestHandler")
-                .ok_or("VNImageRequestHandler class not found")?;
-            let handler: *mut Object = msg_send![handler_class, alloc];
-            let handler: *mut Object = msg_send![handler, initWithCGImage: cg_image options: {
-                let empty_dict: *mut Object = msg_send![Class::get("NSDictionary").unwrap(), dictionary];
-                empty_dict
-            }];
+#[cfg(target_os = "macos")]
+fn rgba_to_grayscale(data: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
+    let expected_len = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or("OCR image dimensions overflow")?;
 
-            // Create VNRecognizeTextRequest
-            let request_class = Class::get("VNRecognizeTextRequest")
-                .ok_or("VNRecognizeTextRequest class not found")?;
-            let request: *mut Object = msg_send![request_class, alloc];
-            let request: *mut Object = msg_send![request, init];
+    if data.len() < expected_len {
+        return Err(format!(
+            "OCR image buffer too small: expected at least {} bytes, got {}",
+            expected_len,
+            data.len()
+        ));
+    }
 
-            // Set recognition level to accurate
-            let _: () = msg_send![request, setRecognitionLevel: 1i64]; // VNRequestTextRecognitionLevelAccurate
+    let mut grayscale = Vec::with_capacity((width as usize) * (height as usize));
+    for pixel in data[..expected_len].chunks_exact(4) {
+        let luminance = ((299u32 * pixel[0] as u32)
+            + (587u32 * pixel[1] as u32)
+            + (114u32 * pixel[2] as u32)
+            + 500)
+            / 1000;
+        grayscale.push(luminance as u8);
+    }
 
-            // Perform the request
-            let mut error: *mut Object = std::ptr::null_mut();
-            let requests: *mut Object =
-                msg_send![Class::get("NSArray").unwrap(), arrayWithObject: request];
-            let success: bool = msg_send![handler, performRequests: requests error: &mut error];
+    Ok(grayscale)
+}
 
-            if !success {
-                return Err("OCR request failed".to_string());
-            }
+#[cfg(target_os = "macos")]
+fn load_supported_languages() -> Option<HashSet<String>> {
+    cidre::objc::ar_pool(|| {
+        let mut request = vn::RecognizeTextRequest::new();
+        request.set_recognition_level(vn::RequestTextRecognitionLevel::Accurate);
+        request
+            .supported_recognition_langs()
+            .ok()
+            .map(|languages| languages.iter().map(|lang| lang.to_string()).collect())
+    })
+}
 
-            // Get results
-            let results: *mut Object = msg_send![request, results];
-            if results.is_null() {
-                return Ok(String::new());
-            }
+#[cfg(target_os = "macos")]
+fn build_ocr_passes(supported_languages: Option<&HashSet<String>>) -> Vec<OcrPass> {
+    let mut selected_languages = Vec::new();
+    let mut passes = Vec::new();
 
-            let count: usize = msg_send![results, count];
-            let mut text = String::new();
+    for (name, candidates, use_language_correction) in DESIRED_LANGUAGE_GROUPS {
+        if let Some(language) = select_supported_language(supported_languages, candidates) {
+            selected_languages.push(language.clone());
+            passes.push(OcrPass {
+                name,
+                languages: vec![language],
+                use_language_correction: *use_language_correction,
+            });
+        }
+    }
 
-            for i in 0..count {
-                let observation: *mut Object = msg_send![results, objectAtIndex: i];
-                let top_candidates: *mut Object = msg_send![observation, topCandidates: 1usize];
-                if !top_candidates.is_null() {
-                    let candidate_count: usize = msg_send![top_candidates, count];
-                    if candidate_count > 0 {
-                        let candidate: *mut Object = msg_send![top_candidates, objectAtIndex: 0];
-                        let string: *const Object = msg_send![candidate, string];
-                        let c_str: *const std::os::raw::c_char = msg_send![string, UTF8String];
-                        if !c_str.is_null() {
-                            let recognized = std::ffi::CStr::from_ptr(c_str)
-                                .to_string_lossy()
-                                .into_owned();
-                            if !text.is_empty() {
-                                text.push(' ');
-                            }
-                            text.push_str(&recognized);
-                        }
-                    }
+    if !selected_languages.is_empty() {
+        let mut multilingual_languages = selected_languages.clone();
+        multilingual_languages.sort();
+        multilingual_languages.dedup();
+        let mut corrected_languages = selected_languages;
+        corrected_languages.sort();
+        corrected_languages.dedup();
+
+        passes.insert(
+            0,
+            OcrPass {
+                name: "multilingual",
+                languages: multilingual_languages,
+                use_language_correction: false,
+            },
+        );
+        passes.insert(
+            1,
+            OcrPass {
+                name: "multilingual_corrected",
+                languages: corrected_languages,
+                use_language_correction: true,
+            },
+        );
+    }
+
+    passes
+}
+
+#[cfg(target_os = "macos")]
+fn select_supported_language(
+    supported_languages: Option<&HashSet<String>>,
+    candidates: &[&str],
+) -> Option<String> {
+    match supported_languages {
+        Some(supported) => {
+            for candidate in candidates {
+                if supported.contains(*candidate) {
+                    return Some((*candidate).to_string());
                 }
             }
 
-            Ok(text)
+            for candidate in candidates {
+                let prefix = candidate.split('-').next().unwrap_or(candidate);
+                if let Some(language) = supported.iter().find(|language| {
+                    *language == prefix
+                        || language
+                            .strip_prefix(prefix)
+                            .is_some_and(|suffix| suffix.starts_with('-'))
+                }) {
+                    return Some(language.clone());
+                }
+            }
+
+            None
         }
+        None => candidates.first().map(|candidate| (*candidate).to_string()),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn run_vision_ocr(
+    grayscale: &[u8],
+    width: usize,
+    height: usize,
+    passes: &[OcrPass],
+) -> Result<String, String> {
+    cidre::objc::ar_pool(|| {
+        let mut pixel_buf_out = None;
+        let pixel_buf = unsafe {
+            PixelBuf::create_with_bytes_in(
+                width,
+                height,
+                PixelFormat::ONE_COMPONENT_8,
+                grayscale.as_ptr() as *mut c_void,
+                width,
+                release_callback,
+                null_mut(),
+                None,
+                &mut pixel_buf_out,
+                None,
+            )
+            .to_result_unchecked(pixel_buf_out)
+        }
+        .map_err(|error| format!("Failed to create OCR pixel buffer: {error:?}"))?;
+
+        let handler = ImageRequestHandler::with_cv_pixel_buf(&pixel_buf, None)
+            .ok_or("Failed to create Vision request handler".to_string())?;
+
+        let mut best_result: Option<OcrPassResult> = None;
+        let mut last_error: Option<String> = None;
+
+        for pass in passes {
+            match run_vision_pass(&handler, pass) {
+                Ok(result) => {
+                    if result.text.trim().is_empty() {
+                        continue;
+                    }
+                    if result.meaningful_char_count == 0 {
+                        continue;
+                    }
+
+                    let score = ocr_result_score(&result);
+                    let replace = best_result
+                        .as_ref()
+                        .map(|best| score > ocr_result_score(best))
+                        .unwrap_or(true);
+
+                    eprintln!(
+                        "[OCR] Pass {} recognized {} chars (avg confidence {:.3})",
+                        pass.name, result.char_count, result.avg_confidence
+                    );
+
+                    if replace {
+                        best_result = Some(result);
+                    }
+                }
+                Err(error) => {
+                    eprintln!("[OCR] Pass {} failed: {}", pass.name, error);
+                    last_error = Some(error);
+                }
+            }
+        }
+
+        if let Some(result) = best_result {
+            Ok(result.text)
+        } else if let Some(error) = last_error {
+            Err(error)
+        } else {
+            Ok(String::new())
+        }
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn ocr_result_score(result: &OcrPassResult) -> f32 {
+    result.avg_confidence * result.meaningful_char_count as f32
+}
+
+#[cfg(target_os = "macos")]
+fn run_vision_pass(handler: &ImageRequestHandler, pass: &OcrPass) -> Result<OcrPassResult, String> {
+    let mut request = vn::RecognizeTextRequest::new();
+    request.set_recognition_level(vn::RequestTextRecognitionLevel::Accurate);
+    request.set_uses_lang_correction(pass.use_language_correction);
+
+    let mut languages_array = ns::ArrayMut::<ns::String>::with_capacity(pass.languages.len());
+    for language in &pass.languages {
+        languages_array.push(&ns::String::with_str(language));
+    }
+    request.set_recognition_langs(&languages_array);
+
+    let requests = ns::Array::<vn::Request>::from_slice(&[&request]);
+    handler
+        .perform(&requests)
+        .map_err(|error| format!("Vision request failed: {error:?}"))?;
+
+    extract_result(&request)
+}
+
+#[cfg(target_os = "macos")]
+fn extract_result(request: &vn::RecognizeTextRequest) -> Result<OcrPassResult, String> {
+    let Some(results) = request.results() else {
+        return Ok(OcrPassResult {
+            text: String::new(),
+            avg_confidence: 0.0,
+            char_count: 0,
+            meaningful_char_count: 0,
+        });
+    };
+
+    let mut text = String::new();
+    let mut confidence_total = 0.0f32;
+    let mut confidence_count = 0usize;
+
+    for observation in results.iter() {
+        let candidates = observation.top_candidates(1);
+        let Ok(candidate) = candidates.get(0) else {
+            continue;
+        };
+
+        let recognized = candidate.string().to_string();
+        if recognized.trim().is_empty() {
+            continue;
+        }
+
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(recognized.trim());
+
+        confidence_total += candidate.confidence();
+        confidence_count += 1;
+    }
+
+    let char_count = text.chars().count();
+    let meaningful_char_count = text.chars().filter(|ch| ch.is_alphanumeric()).count();
+    let avg_confidence = if confidence_count == 0 {
+        0.0
+    } else {
+        confidence_total / confidence_count as f32
+    };
+
+    Ok(OcrPassResult {
+        text,
+        avg_confidence,
+        char_count,
+        meaningful_char_count,
+    })
 }

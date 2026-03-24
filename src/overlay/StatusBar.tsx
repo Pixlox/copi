@@ -1,6 +1,9 @@
 interface StatusBarProps {
   totalCount: number;
   query: string;
+  actionsOpen: boolean;
+  canOpenActions: boolean;
+  onToggleActions: () => void;
 }
 
 function formatCount(count: number): string {
@@ -31,20 +34,39 @@ function detectFilters(query: string): string[] {
   return badges;
 }
 
-function StatusBar({ totalCount, query }: StatusBarProps) {
+function StatusBar({ totalCount, query, actionsOpen, canOpenActions, onToggleActions }: StatusBarProps) {
   const filters = detectFilters(query);
 
   return (
-    <div className="flex items-center justify-between px-4 py-1.5 border-t border-white/[0.06] text-[11px] text-white/35">
+    <div
+      className="flex min-h-[46px] items-center justify-between px-4 py-2 text-[11px]"
+      style={{ borderTop: "1px solid var(--border-default)", color: "var(--text-tertiary)" }}
+    >
       <div className="flex items-center gap-2">
         <span>{formatCount(totalCount)} clips</span>
         {filters.map((f) => (
           <span key={f} className="temporal-badge">{f}</span>
         ))}
       </div>
-      <div className="flex items-center gap-3 text-white/30">
+      <div className="flex items-center gap-3" style={{ color: "var(--text-tertiary)" }}>
         <span>↵ paste</span>
         <span>⇧↵ copy</span>
+        <button
+          type="button"
+          data-no-drag
+          disabled={!canOpenActions}
+          onClick={onToggleActions}
+          className="rounded-full border px-2.5 py-1 text-[11px] transition-colors"
+          style={
+            canOpenActions
+              ? actionsOpen
+                ? { borderColor: "var(--accent-border)", background: "var(--accent-bg)", color: "var(--text-primary)" }
+                : { borderColor: "var(--border-default)", background: "var(--surface-primary)", color: "var(--text-secondary)" }
+              : { borderColor: "var(--border-subtle)", background: "var(--surface-secondary)", color: "var(--text-muted)" }
+          }
+        >
+          Actions ⌘K
+        </button>
       </div>
     </div>
   );

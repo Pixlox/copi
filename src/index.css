@@ -2,6 +2,169 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══ Theme variables (macOS native system colors) ═════════════════ */
+
+:root,
+.dark {
+  /* Overlay */
+  --overlay-bg: rgba(25, 25, 28, 0.82);
+  --overlay-border: rgba(255, 255, 255, 0.06);
+  --overlay-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+
+  /* Surfaces */
+  --surface-primary: rgba(255, 255, 255, 0.06);
+  --surface-secondary: rgba(255, 255, 255, 0.03);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-active: rgba(255, 255, 255, 0.14);
+
+  /* Borders */
+  --border-default: rgba(255, 255, 255, 0.12);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  /* Text */
+  --text-primary: rgba(255, 255, 255, 0.85);
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-tertiary: rgba(255, 255, 255, 0.30);
+  --text-muted: rgba(255, 255, 255, 0.18);
+  --text-placeholder: rgba(255, 255, 255, 0.35);
+
+  /* Accent (macOS system blue) */
+  --accent-solid: #0A84FF;
+  --accent-bg: rgba(10, 132, 255, 0.12);
+  --accent-border: rgba(10, 132, 255, 0.25);
+  --accent-text: rgba(10, 132, 255, 0.90);
+
+  /* Danger (macOS system red) */
+  --danger-bg: rgba(255, 69, 58, 0.12);
+  --danger-border: rgba(255, 69, 58, 0.20);
+  --danger-text: rgba(255, 69, 58, 0.90);
+
+  /* Success */
+  --success-bg: rgba(50, 215, 75, 0.10);
+  --success-text: rgba(50, 215, 75, 0.90);
+
+  /* Code preview */
+  --code-bg: rgba(0, 0, 0, 0.15);
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.20);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
+
+  /* Input caret */
+  --caret-color: #0A84FF;
+
+  /* Badges */
+  --badge-bg: rgba(255, 255, 255, 0.08);
+  --badge-text: rgba(255, 255, 255, 0.45);
+
+  /* Temporal / source badges */
+  --temporal-bg: rgba(10, 132, 255, 0.15);
+  --temporal-text: rgba(10, 132, 255, 0.9);
+  --source-bg: rgba(175, 82, 222, 0.15);
+  --source-text: rgba(175, 82, 222, 0.9);
+
+  /* Settings (macOS System Settings dark) */
+  --settings-bg: #1C1C1E;
+  --settings-card-bg: #2C2C2E;
+  --settings-card-border: transparent;
+  --settings-section-title: rgba(255, 255, 255, 0.45);
+  --settings-input-bg: rgba(120, 120, 128, 0.24);
+  --settings-input-border: transparent;
+
+  /* Toggle (macOS native) */
+  --toggle-track-off: rgba(120, 120, 128, 0.36);
+  --toggle-track-on: #34C759;
+  --toggle-knob: #FFFFFF;
+  --toggle-knob-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.2);
+
+  /* Segmented control (macOS native) */
+  --segment-bg: rgba(120, 120, 128, 0.20);
+  --segment-active-bg: rgba(255, 255, 255, 0.14);
+  --segment-active-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.light {
+  /* Overlay */
+  --overlay-bg: rgba(255, 255, 255, 0.78);
+  --overlay-border: rgba(0, 0, 0, 0.08);
+  --overlay-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
+
+  /* Surfaces */
+  --surface-primary: rgba(0, 0, 0, 0.04);
+  --surface-secondary: rgba(0, 0, 0, 0.02);
+  --surface-hover: rgba(0, 0, 0, 0.04);
+  --surface-active: rgba(0, 0, 0, 0.08);
+
+  /* Borders */
+  --border-default: rgba(0, 0, 0, 0.10);
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-strong: rgba(0, 0, 0, 0.15);
+
+  /* Text */
+  --text-primary: rgba(0, 0, 0, 0.85);
+  --text-secondary: rgba(0, 0, 0, 0.55);
+  --text-tertiary: rgba(0, 0, 0, 0.30);
+  --text-muted: rgba(0, 0, 0, 0.18);
+  --text-placeholder: rgba(0, 0, 0, 0.30);
+
+  /* Accent */
+  --accent-solid: #007AFF;
+  --accent-bg: rgba(0, 122, 255, 0.08);
+  --accent-border: rgba(0, 122, 255, 0.20);
+  --accent-text: rgba(0, 122, 255, 0.90);
+
+  /* Danger */
+  --danger-bg: rgba(255, 59, 48, 0.08);
+  --danger-border: rgba(255, 59, 48, 0.15);
+  --danger-text: rgba(255, 59, 48, 0.90);
+
+  /* Success */
+  --success-bg: rgba(52, 199, 89, 0.08);
+  --success-text: rgba(40, 168, 68, 0.90);
+
+  /* Code preview */
+  --code-bg: rgba(0, 0, 0, 0.04);
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+
+  /* Input caret */
+  --caret-color: #007AFF;
+
+  /* Badges */
+  --badge-bg: rgba(0, 0, 0, 0.06);
+  --badge-text: rgba(0, 0, 0, 0.45);
+
+  /* Temporal / source badges */
+  --temporal-bg: rgba(0, 122, 255, 0.08);
+  --temporal-text: rgba(0, 80, 180, 0.85);
+  --source-bg: rgba(147, 51, 234, 0.08);
+  --source-text: rgba(126, 34, 206, 0.85);
+
+  /* Settings (macOS System Settings light) */
+  --settings-bg: #F2F2F7;
+  --settings-card-bg: #FFFFFF;
+  --settings-card-border: transparent;
+  --settings-section-title: rgba(0, 0, 0, 0.40);
+  --settings-input-bg: rgba(120, 120, 128, 0.12);
+  --settings-input-border: transparent;
+
+  /* Toggle */
+  --toggle-track-off: rgba(120, 120, 128, 0.24);
+  --toggle-track-on: #34C759;
+  --toggle-knob: #FFFFFF;
+  --toggle-knob-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.15);
+
+  /* Segmented control */
+  --segment-bg: rgba(0, 0, 0, 0.06);
+  --segment-active-bg: #FFFFFF;
+  --segment-active-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.10);
+}
+
+/* ═══ Base ══════════════════════════════════════════════════════════ */
+
 * {
   margin: 0;
   padding: 0;
@@ -13,13 +176,16 @@ html, body {
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
-  color: #f5f5f7;
+  color: var(--text-primary);
   user-select: none;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Everything interactive should NOT be draggable */
-input, button, .filter-pill {
+html.settings-window, html.settings-window body {
+  overflow: auto;
+}
+
+input, button, .filter-pill, select, textarea {
   -webkit-app-region: no-drag;
 }
 
@@ -30,7 +196,14 @@ input, button, .filter-pill {
   height: 100%;
 }
 
-/* Custom scrollbar */
+.settings-root {
+  border-radius: 0;
+  overflow: visible;
+  min-height: 100vh;
+}
+
+/* ═══ Scrollbar ════════════════════════════════════════════════════ */
+
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -40,15 +213,16 @@ input, button, .filter-pill {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--scrollbar-thumb-hover);
 }
 
-/* Overlay open animation */
+/* ═══ Animations ═══════════════════════════════════════════════════ */
+
 @keyframes overlay-open {
   0% { transform: scale(0.96); opacity: 0; }
   100% { transform: scale(1); opacity: 1; }
@@ -58,7 +232,8 @@ input, button, .filter-pill {
   animation: overlay-open 120ms ease-out forwards;
 }
 
-/* Code block styling */
+/* ═══ Code block ═══════════════════════════════════════════════════ */
+
 .code-preview {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 12px;
@@ -73,52 +248,308 @@ input, button, .filter-pill {
   background: transparent !important;
 }
 
-/* Filter pill styles */
+.light .code-preview {
+  color: var(--text-primary);
+}
+
+.light .code-preview span[style*="color"] {
+  filter: brightness(0.75) saturate(1.3);
+}
+
+/* ═══ Filter pill ══════════════════════════════════════════════════ */
+
 .filter-pill {
   @apply px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors cursor-pointer;
 }
 
 .filter-pill.active {
-  @apply bg-white/20 text-white;
+  background: var(--surface-active);
+  color: var(--text-primary);
 }
 
-/* Input styling */
+/* ═══ Input ════════════════════════════════════════════════════════ */
+
 input {
-  caret-color: #60a5fa;
+  caret-color: var(--caret-color);
 }
 
 input::placeholder {
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-placeholder);
 }
 
-/* Row number hint */
+/* ═══ Row number hint ══════════════════════════════════════════════ */
+
 .row-number {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--text-muted);
   font-family: 'SF Mono', monospace;
   font-size: 10px;
   width: 14px;
   text-align: right;
 }
 
-/* Temporal badge */
+/* ═══ Badges ═══════════════════════════════════════════════════════ */
+
 .temporal-badge {
   @apply text-[10px] px-1.5 py-0.5 rounded-full;
-  background: rgba(96, 165, 250, 0.15);
-  color: rgba(147, 197, 253, 0.9);
+  background: var(--temporal-bg);
+  color: var(--temporal-text);
 }
 
-/* Source app badge */
 .source-badge {
   @apply text-[10px] px-1.5 py-0.5 rounded-full;
-  background: rgba(167, 139, 250, 0.15);
-  color: rgba(196, 181, 253, 0.9);
+  background: var(--source-bg);
+  color: var(--source-text);
 }
 
-/* Line clamp (fallback if Tailwind plugin missing) */
+/* ═══ Line clamp ═══════════════════════════════════════════════════ */
+
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
+}
+
+/* ═══ Toggle switch (macOS native: 32×18px, green) ═════════════════ */
+
+.toggle-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  transition: background-color 200ms ease-in-out;
+  cursor: pointer;
+  flex-shrink: 0;
+  border: none;
+  outline: none;
+  padding: 0;
+}
+
+.toggle-track.off {
+  background: var(--toggle-track-off);
+}
+
+.toggle-track.on {
+  background: var(--toggle-track-on);
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--toggle-knob);
+  box-shadow: var(--toggle-knob-shadow);
+  transition: left 200ms ease-in-out;
+  border: 0.5px solid rgba(0, 0, 0, 0.04);
+}
+
+.toggle-track.off .toggle-knob {
+  left: 2px;
+}
+
+.toggle-track.on .toggle-knob {
+  left: 16px;
+}
+
+.toggle-track:active .toggle-knob {
+  width: 17px;
+}
+
+.toggle-track.off:active .toggle-knob {
+  left: 1px;
+}
+
+.toggle-track.on:active .toggle-knob {
+  left: 14px;
+}
+
+/* ═══ Segmented control (macOS native) ═════════════════════════════ */
+
+.segmented-control {
+  display: inline-flex;
+  border-radius: 7px;
+  padding: 2px;
+  background: var(--segment-bg);
+  border: none;
+}
+
+.segmented-option {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 150ms ease;
+  color: var(--text-secondary);
+  border: none;
+  background: transparent;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.segmented-option.active {
+  background: var(--segment-active-bg);
+  color: var(--text-primary);
+  box-shadow: var(--segment-active-shadow);
+  font-weight: 500;
+}
+
+.segmented-option:hover:not(.active) {
+  color: var(--text-primary);
+}
+
+/* ═══ Custom Picker (replaces <select>) ════════════════════════════ */
+
+.picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 22px 4px 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--settings-input-bg);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  line-height: 1.4;
+  transition: background 120ms ease;
+  white-space: nowrap;
+}
+
+.picker-trigger::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 4px solid var(--text-tertiary);
+  pointer-events: none;
+}
+
+.picker-trigger:hover {
+  background: var(--surface-active);
+}
+
+.picker-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 100%;
+  background: var(--settings-card-bg);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3),
+              0 2px 8px rgba(0, 0, 0, 0.2);
+  border: 0.5px solid var(--border-default);
+  z-index: 100;
+}
+
+.picker-option {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 80ms ease;
+  white-space: nowrap;
+}
+
+.picker-option:hover {
+  background: var(--accent-solid);
+  color: #FFFFFF;
+}
+
+.picker-option.selected {
+  font-weight: 500;
+}
+
+.picker-option .checkmark {
+  margin-right: 6px;
+  font-size: 11px;
+}
+
+/* ═══ Confirmation dialog (macOS alert) ════════════════════════════ */
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(4px);
+}
+
+.confirm-dialog {
+  border-radius: 12px;
+  border: none;
+  background: var(--settings-card-bg);
+  padding: 20px 24px;
+  max-width: 340px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35),
+              0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ═══ Settings native macOS styles ═════════════════════════════════ */
+
+.settings-input {
+  background: var(--settings-input-bg);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+  transition: box-shadow 150ms ease;
+  line-height: 1.4;
+  width: 100%;
+}
+
+.settings-input:focus {
+  box-shadow: 0 0 0 2px var(--accent-solid);
+}
+
+.settings-button {
+  background: var(--settings-input-bg);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 120ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-button:hover {
+  background: var(--surface-active);
+}
+
+.settings-button.destructive {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.settings-button.destructive:hover {
+  filter: brightness(1.15);
+}
+
+/* Light mode card shadow for depth */
+.light .settings-card-shadow {
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.04),
+              0 1px 3px rgba(0, 0, 0, 0.04);
 }

@@ -1,7 +1,7 @@
 use regex::Regex;
 
 pub fn should_capture(content: &str, app: &tauri::AppHandle) -> bool {
-    let config = match crate::settings::get_config(app.clone()) {
+    let config = match crate::settings::get_config_sync(app.clone()) {
         Ok(c) => c,
         Err(_) => return true,
     };
@@ -9,7 +9,7 @@ pub fn should_capture(content: &str, app: &tauri::AppHandle) -> bool {
     // Check excluded apps
     #[cfg(target_os = "macos")]
     {
-        let source_app = get_frontmost_app_name();
+        let source_app = crate::macos::get_frontmost_app_name();
         for excluded in &config.privacy.excluded_apps {
             if source_app.contains(excluded) {
                 return false;
@@ -27,19 +27,4 @@ pub fn should_capture(content: &str, app: &tauri::AppHandle) -> bool {
     }
 
     true
-}
-
-#[cfg(target_os = "macos")]
-fn get_frontmost_app_name() -> String {
-    use std::process::Command;
-    if let Ok(output) = Command::new("osascript")
-        .arg("-e")
-        .arg("name of application (path to frontmost application as text)")
-        .output()
-    {
-        if let Ok(name) = String::from_utf8(output.stdout) {
-            return name.trim().to_string();
-        }
-    }
-    String::new()
 }

@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from "react";
 import { Search, X } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 import { FilterType } from "../hooks/useSearch";
 
 interface SearchBarProps {
@@ -22,7 +23,10 @@ function SearchBar({ query, onQueryChange, activeFilter, onFilterChange }: Searc
   const inputRef = useRef<HTMLInputElement>(null);
 
   const focusInput = useCallback(() => {
-    inputRef.current?.focus();
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
   }, []);
 
   useEffect(() => {
@@ -32,26 +36,41 @@ function SearchBar({ query, onQueryChange, activeFilter, onFilterChange }: Searc
     return () => window.removeEventListener("focus", onFocus);
   }, [focusInput]);
 
+  useEffect(() => {
+    const unlisten = listen("overlay:shown", () => {
+      focusInput();
+      window.setTimeout(focusInput, 30);
+      window.setTimeout(focusInput, 120);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [focusInput]);
+
   const filters: FilterType[] = ["all", "text", "url", "code", "image", "pinned"];
 
   return (
-    <div className="border-b border-white/[0.06]">
+    <div style={{ borderBottom: "1px solid var(--border-default)" }}>
       <div className="flex items-center gap-2 px-4 py-3">
-        <Search size={16} className="text-white/40 shrink-0" />
+        <Search size={16} style={{ color: "var(--text-tertiary)" }} className="shrink-0" />
         <input
           ref={inputRef}
           type="text"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Search your clipboard…"
-          className="flex-1 bg-transparent outline-none text-[14px] text-white/90"
+          className="flex-1 bg-transparent outline-none text-[14px]"
+          style={{ color: "var(--text-primary)" }}
           spellCheck={false}
           autoComplete="off"
+          autoFocus
         />
         {query.length > 0 && (
           <button
             onClick={() => onQueryChange("")}
-            className="p-0.5 rounded-full hover:bg-white/10 text-white/40 hover:text-white/70 transition-colors"
+            className="p-0.5 rounded-full transition-colors"
+            style={{ color: "var(--text-tertiary)" }}
           >
             <X size={14} />
           </button>
@@ -66,8 +85,9 @@ function SearchBar({ query, onQueryChange, activeFilter, onFilterChange }: Searc
             className={`filter-pill ${
               activeFilter === filter
                 ? "active"
-                : "text-white/35 hover:text-white/60"
+                : ""
             }`}
+            style={activeFilter !== filter ? { color: "var(--text-tertiary)" } : undefined}
           >
             {FILTER_LABELS[filter]}
           </button>

@@ -35,13 +35,22 @@ tokenizers = "0.20"
 
 syntect = "5"
 
-# macOS: NSPanel overlay for fullscreen support (EcoPaste approach)
+# Desktop-only plugins
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-process = "2"
+
+# macOS: NSPanel for fullscreen overlay (EcoPaste pattern — v2.1 branch)
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
-# Force relax-sign-encoding for macOS 26 Tahoe compatibility
+cidre = { version = "0.9.0", default-features = false, features = ["cf", "cg", "cv", "cm", "ns", "objc", "vn", "blocks", "macos_13_0"] }
+# Relax-sign-encoding prevents PAC crash on macOS 26 Tahoe
 objc2 = { version = "0.6.1", features = ["relax-sign-encoding"] }
-# OCR via Apple Vision framework
-objc = "0.2"
+objc2-app-kit = { version = "0.3.2", features = ["NSBitmapImageRep", "NSImage", "NSRunningApplication", "NSWorkspace"] }
+objc2-foundation = { version = "0.3.2", features = ["NSData", "NSDictionary", "NSGeometry", "NSString", "NSURL", "objc2-core-foundation"] }
+core-graphics = "0.25"
 
 [features]
 default = ["custom-protocol"]

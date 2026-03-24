@@ -1,29 +1,41 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface UseKeyboardOptions {
   resultCount: number;
   selectedIndex: number;
+  actionsOpen: boolean;
+  actionCount: number;
+  selectedActionIndex: number;
   onSelect: (index: number) => void;
+  onSelectAction: (index: number) => void;
+  onAction: (index: number) => void;
   onCopy: (index: number) => void;
   onPaste: (index: number) => void;
   onNumberCopy: (resultIndex: number) => void;
   onFilterCycle: () => void;
   onDelete: (index: number) => void;
   onPin: (index: number) => void;
+  onCloseActions: () => void;
   onActions: (index: number) => void;
 }
 
 export function useKeyboard({
   resultCount,
   selectedIndex,
+  actionsOpen,
+  actionCount,
+  selectedActionIndex,
   onSelect,
+  onSelectAction,
+  onAction,
   onCopy,
   onPaste,
   onNumberCopy,
   onFilterCycle,
   onDelete,
   onPin,
+  onCloseActions,
   onActions,
 }: UseKeyboardOptions) {
   const handleKeyDown = useCallback(
@@ -45,7 +57,68 @@ export function useKeyboard({
 
       if (e.key === "Escape") {
         e.preventDefault();
-        invoke("hide_overlay", { paste: false });
+        if (actionsOpen) {
+          onCloseActions();
+        } else {
+          invoke("hide_overlay", { paste: false });
+        }
+        return;
+      }
+
+      if (actionsOpen) {
+        if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+          e.preventDefault();
+          if (actionCount > 0) {
+            onSelectAction(Math.min(selectedActionIndex + 1, actionCount - 1));
+          }
+          return;
+        }
+
+        if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+          e.preventDefault();
+          if (actionCount > 0) {
+            onSelectAction(Math.max(selectedActionIndex - 1, 0));
+          }
+          return;
+        }
+
+        if (e.key === "k" && isMeta) {
+          e.preventDefault();
+          onCloseActions();
+          return;
+        }
+
+        if (e.key === "d" && isMeta) {
+          e.preventDefault();
+          if (selectedIndex >= 0 && selectedIndex < resultCount) {
+            onDelete(selectedIndex);
+          }
+          return;
+        }
+
+        if (e.key === "p" && isMeta) {
+          e.preventDefault();
+          if (selectedIndex >= 0 && selectedIndex < resultCount) {
+            onPin(selectedIndex);
+          }
+          return;
+        }
+
+        if (e.key === "Enter" && e.shiftKey) {
+          e.preventDefault();
+          if (selectedIndex >= 0 && selectedIndex < resultCount) {
+            onCopy(selectedIndex);
+            onCloseActions();
+          }
+          return;
+        }
+
+        if (e.key === "Enter" && !isMeta) {
+          e.preventDefault();
+          if (selectedActionIndex >= 0 && selectedActionIndex < actionCount) {
+            onAction(selectedActionIndex);
+          }
+        }
         return;
       }
 
@@ -126,7 +199,24 @@ export function useKeyboard({
         return;
       }
     },
-    [resultCount, selectedIndex, onSelect, onCopy, onPaste, onNumberCopy, onFilterCycle, onDelete, onPin, onActions]
+    [
+      actionsOpen,
+      actionCount,
+      selectedActionIndex,
+      resultCount,
+      selectedIndex,
+      onSelect,
+      onSelectAction,
+      onAction,
+      onCopy,
+      onPaste,
+      onNumberCopy,
+      onFilterCycle,
+      onDelete,
+      onPin,
+      onCloseActions,
+      onActions,
+    ]
   );
 
   useEffect(() => {

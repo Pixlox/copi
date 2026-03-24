@@ -33,7 +33,7 @@ fn naive_ts(ndt: chrono::NaiveDateTime) -> i64 {
 // ─── Temporal Extraction ──────────────────────────────────────────
 
 fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
-    use chrono::{Datelike, Duration, Local, NaiveTime, TimeZone};
+    use chrono::{Datelike, Duration, Local, NaiveTime};
 
     let now = Local::now();
     let today = |h: u32, m: u32, s: u32| {
@@ -52,7 +52,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
     };
 
     let patterns: Vec<(&str, Box<dyn Fn() -> (Option<i64>, Option<i64>)>)> = vec![
-        // Yesterday
         (
             r"(?i)\b(?:from\s+)?yesterday\b",
             Box::new(|| {
@@ -60,7 +59,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 (Some(s), Some(e))
             }),
         ),
-        // Today
         (
             r"(?i)\btoday\b",
             Box::new(|| {
@@ -68,22 +66,15 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 (Some(s), Some(e))
             }),
         ),
-        // Day names: "monday", "tuesday", etc.
         (
             r"(?i)\b(last\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
-            Box::new(|| {
-                // Handled specially below
-                (None, None)
-            }),
+            Box::new(|| (None, None)),
         ),
-        // N hours ago (±30min window)
         (r"(?i)\b(\d+)\s+hours?\s+ago\b", Box::new(|| (None, None))),
-        // Around N hours ago
         (
             r"(?i)\baround\s+(\d+)\s+hours?\s+ago\b",
             Box::new(|| (None, None)),
         ),
-        // Last hour / 1 hour ago
         (
             r"(?i)\b(?:last\s+hour|1\s+hour\s+ago|an?\s+hour\s+ago)\b",
             Box::new(|| {
@@ -92,9 +83,7 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 (Some(start.timestamp()), Some(end.timestamp()))
             }),
         ),
-        // N days ago
         (r"(?i)\b(\d+)\s+days?\s+ago\b", Box::new(|| (None, None))),
-        // Last/past week
         (
             r"(?i)\b(?:last|past)\s+week\b",
             Box::new(|| {
@@ -104,7 +93,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 )
             }),
         ),
-        // Last/past month
         (
             r"(?i)\b(?:last|past)\s+month\b",
             Box::new(|| {
@@ -114,17 +102,14 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 )
             }),
         ),
-        // Last/past N days
         (
             r"(?i)\b(?:last|past)\s+(\d+)\s+days?\b",
             Box::new(|| (None, None)),
         ),
-        // Last/past N hours
         (
             r"(?i)\b(?:last|past)\s+(\d+)\s+hours?\b",
             Box::new(|| (None, None)),
         ),
-        // This morning
         (
             r"(?i)\bthis\s+morning\b",
             Box::new(|| {
@@ -134,7 +119,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 )
             }),
         ),
-        // This afternoon
         (
             r"(?i)\bthis\s+afternoon\b",
             Box::new(|| {
@@ -144,7 +128,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 )
             }),
         ),
-        // This evening / tonight
         (
             r"(?i)\b(?:this\s+evening|tonight)\b",
             Box::new(|| {
@@ -154,7 +137,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 )
             }),
         ),
-        // Recently (24 hours)
         (
             r"(?i)\brecently\b",
             Box::new(|| {
@@ -168,10 +150,8 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
 
     for (pattern, range_fn) in &patterns {
         if let Some(mat) = find_pattern(query, pattern) {
-            // For patterns with capture groups, extract the number
             let remaining = query[..mat.0].to_string() + &query[mat.1..];
 
-            // Handle "N hours ago" / "around N hours ago"
             if pattern.contains("hours?\\s+ago") {
                 if let Some(num) = extract_number(query, mat.0, mat.1) {
                     let around = pattern.contains("around");
@@ -189,7 +169,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 }
             }
 
-            // Handle "N days ago"
             if pattern.contains("days?\\s+ago") {
                 if let Some(num) = extract_number(query, mat.0, mat.1) {
                     let target = now - Duration::days(num);
@@ -198,7 +177,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 }
             }
 
-            // Handle "last/past N days"
             if pattern.contains("last|past") && pattern.contains("days?\\b") {
                 if let Some(num) = extract_number(query, mat.0, mat.1) {
                     return (
@@ -209,7 +187,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 }
             }
 
-            // Handle "last/past N hours"
             if pattern.contains("last|past") && pattern.contains("hours?\\b") {
                 if let Some(num) = extract_number(query, mat.0, mat.1) {
                     return (
@@ -220,7 +197,6 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
                 }
             }
 
-            // Handle day names
             if pattern.contains("monday|tuesday") {
                 if let Some(day_name) = extract_day_name(query, mat.0, mat.1) {
                     let target = find_last_weekday(&now, &day_name);
@@ -236,25 +212,27 @@ fn extract_temporal(query: &str) -> (Option<i64>, Option<i64>, String) {
         }
     }
 
-    // Try chrono-english for flexible parsing
+    // Try chrono-english for flexible parsing — only consume prefix if parse succeeds
     for prefix in &["from ", "in ", "on ", "during ", "since "] {
         if let Some(idx) = query.to_lowercase().find(prefix) {
             let after_phrase = &query[idx + prefix.len()..];
-            if let Some(dt) = chrono_english::parse_date_string(
-                after_phrase,
-                Local::now(),
-                chrono_english::Dialect::Uk,
-            )
-            .ok()
-            {
-                let start = chrono::NaiveDate::from_ymd_opt(dt.year(), dt.month(), dt.day())
-                    .unwrap()
-                    .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                let end = chrono::NaiveDate::from_ymd_opt(dt.year(), dt.month(), dt.day())
-                    .unwrap()
-                    .and_time(NaiveTime::from_hms_opt(23, 59, 59).unwrap());
-                let remaining = query[..idx].to_string();
-                return (Some(naive_ts(start)), Some(naive_ts(end)), remaining);
+            // Only try if the phrase after the prefix looks like it could be a date
+            // (at least 3 chars and contains a digit or month name)
+            if after_phrase.len() >= 3 {
+                if let Ok(dt) = chrono_english::parse_date_string(
+                    after_phrase,
+                    Local::now(),
+                    chrono_english::Dialect::Uk,
+                ) {
+                    let start = chrono::NaiveDate::from_ymd_opt(dt.year(), dt.month(), dt.day())
+                        .unwrap()
+                        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+                    let end = chrono::NaiveDate::from_ymd_opt(dt.year(), dt.month(), dt.day())
+                        .unwrap()
+                        .and_time(NaiveTime::from_hms_opt(23, 59, 59).unwrap());
+                    let remaining = query[..idx].to_string();
+                    return (Some(naive_ts(start)), Some(naive_ts(end)), remaining);
+                }
             }
         }
     }
@@ -290,28 +268,19 @@ fn find_last_weekday(
 // ─── Source App Extraction ────────────────────────────────────────
 
 fn extract_source_app(query: &str) -> (Option<String>, String) {
-    // Match patterns like "from Slack", "in Chrome", "from VSCode", "in Finder"
-    let re = regex::Regex::new(r"(?i)\b(?:from|in|via)\s+([A-Za-z][A-Za-z0-9. ]*?)(?:\s+(?:yesterday|today|last|this|from|in|\d+|[a-z]+\s+ago|recently|$))")
-        .unwrap();
+    // Match: "from AppName", "in AppName", "via AppName"
+    // Uses cap.get(0) for the full match start position (not cap.get(1).start() - 4)
+    let re = regex::Regex::new(
+        r"(?i)\b(from|in|via)\s+([A-Za-z][A-Za-z0-9.]*?)(?:\s+(?:yesterday|today|last|this|from|in|\d+|recently|$))"
+    ).unwrap();
 
     if let Some(cap) = re.captures(query) {
-        let app_name = cap[1].trim().to_string();
+        let app_name = cap[2].trim().to_string();
         if app_name.len() >= 2 && app_name.len() <= 50 {
-            let remaining = query[..cap.get(1).unwrap().start() - 4].to_string()
-                + &query[cap.get(1).unwrap().end()..];
-            return (Some(app_name), remaining);
-        }
-    }
-
-    // Also try: "url from Slack" or "code from VSCode" — app name after type
-    let re2 = regex::Regex::new(r"(?i)\b(?:url|code|text|image|link)s?\s+(?:from|in|via)\s+([A-Za-z][A-Za-z0-9. ]*?)(?:\s+(?:yesterday|today|last|this|\d+|$))")
-        .unwrap();
-
-    if let Some(cap) = re2.captures(query) {
-        let app_name = cap[1].trim().to_string();
-        if app_name.len() >= 2 {
-            let remaining = query[..cap.get(1).unwrap().start() - 4].to_string()
-                + &query[cap.get(1).unwrap().end()..];
+            // Use the start of the full match (including "from "/"in "/etc)
+            let prefix_start = cap.get(0).unwrap().start();
+            let app_end = cap.get(2).unwrap().end();
+            let remaining = query[..prefix_start].to_string() + &query[app_end..];
             return (Some(app_name), remaining);
         }
     }
@@ -322,9 +291,6 @@ fn extract_source_app(query: &str) -> (Option<String>, String) {
 // ─── Type Hint Extraction ─────────────────────────────────────────
 
 fn extract_type_hint(query: &str) -> (Option<String>, String) {
-    let lower = query.to_lowercase();
-
-    // Match "urls", "code", "images", "links", "text" anywhere as standalone words
     let type_patterns = [
         (r"(?i)\burls?\b", "url"),
         (r"(?i)\blinks?\b", "url"),

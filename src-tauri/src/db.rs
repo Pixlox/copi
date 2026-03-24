@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, OptionalExtension, Result};
 use sqlite_vec::sqlite3_vec_init;
 use tauri::Manager;
 
@@ -41,6 +41,7 @@ pub fn init_db(app: &tauri::AppHandle) -> Result<Connection> {
             content_highlighted TEXT,
             ocr_text TEXT,
             image_data BLOB,
+            image_thumbnail BLOB,
             image_width INTEGER DEFAULT 0,
             image_height INTEGER DEFAULT 0,
             created_at INTEGER NOT NULL,
@@ -79,16 +80,33 @@ pub fn init_db(app: &tauri::AppHandle) -> Result<Connection> {
         ",
     )?;
 
-    // Drop and recreate vec0 table — handles dimension changes (384→768)
-    conn.execute("DROP TABLE IF EXISTS clip_embeddings", [])?;
-    conn.execute(
-        "CREATE VIRTUAL TABLE clip_embeddings USING vec0(embedding float[768])",
-        [],
-    )?;
+    // Only recreate vec table if it doesn't exist or has wrong dimensions
+    let needs_recreate: bool = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='clip_embeddings'",
+            [],
+            |row| {
+                let sql: String = row.get(0).unwrap_or_default();
+                // Check if it contains float[768]
+                Ok(!sql.contains("float[768]"))
+            },
+        )
+        .unwrap_or(true);
+
+    if needs_recreate {
+        eprintln!("[DB] Recreating vec0 table (dim mismatch or missing)");
+        conn.execute("DROP TABLE IF EXISTS clip_embeddings", [])?;
+        conn.execute(
+            "CREATE VIRTUAL TABLE clip_embeddings USING vec0(embedding float[768])",
+            [],
+        )?;
+    } else {
+        eprintln!("[DB] vec0 table exists with correct dimensions");
+    }
 
     run_migrations(&conn)?;
 
-    eprintln!("[DB] Database ready, vec0 table at 768 dimensions");
+    eprintln!("[DB] Database ready");
 
     Ok(conn)
 }
@@ -100,11 +118,14 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
     let needed = [
+        ("source_app_icon", "BLOB"),
         ("content_highlighted", "TEXT"),
         ("ocr_text", "TEXT"),
         ("image_data", "BLOB"),
+        ("image_thumbnail", "BLOB"),
         ("image_width", "INTEGER DEFAULT 0"),
         ("image_height", "INTEGER DEFAULT 0"),
+        ("pinned", "INTEGER DEFAULT 0"),
     ];
 
     for (col, col_type) in &needed {
@@ -114,6 +135,24 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                 [],
             )?;
         }
+    }
+
+    const PIN_SYSTEM_MIGRATION_KEY: &str = "pin_system_v1_migrated";
+    let pin_migration_done = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [PIN_SYSTEM_MIGRATION_KEY],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .is_some();
+
+    if !pin_migration_done {
+        conn.execute("UPDATE clips SET pinned = 0", [])?;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings(key, value) VALUES (?1, '1')",
+            [PIN_SYSTEM_MIGRATION_KEY],
+        )?;
     }
 
     Ok(())
