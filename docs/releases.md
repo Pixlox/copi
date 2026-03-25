@@ -73,15 +73,7 @@ That workflow:
 - verifies the updater public key is not still a placeholder
 - builds macOS Apple Silicon and Windows bundles
 - signs updater artifacts with your Tauri private key
-- uploads bundles, signatures, and `latest.json` to a draft GitHub Release
-
-## Publishing the Release
-
-1. Open the new draft release on GitHub.
-2. Confirm the assets are present.
-3. Publish the draft release.
-
-Only published releases are visible to the updater endpoint.
+- uploads bundles, signatures, and `latest.json` to a published GitHub Release
 
 ## Notes
 
